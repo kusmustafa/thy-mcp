@@ -77,15 +77,25 @@
                 <i class="fa-solid fa-plane-departure me-2" style="color: var(--thy-red);"></i> 
                 Turkish Airlines MCP Dashboard
             </span>
-            <span class="badge bg-light text-dark py-2 px-3">OMM Canlı Analiz</span>
+            <div class="d-flex align-items-center">
+                <button class="btn btn-outline-light btn-sm me-2 d-none" id="btn-logout" onclick="logout()">Girişi Kapat</button>
+                <span class="badge bg-light text-dark py-2 px-3">OMM Canlı Analiz</span>
+            </div>
         </div>
     </nav>
 
     <div class="container my-5">
-        <!-- Bilgilendirme Kutusu -->
-        <div class="alert alert-info border-0 shadow-sm mb-4" role="alert">
-            <i class="fa-solid fa-circle-info me-2 text-primary"></i> 
-            Bu dashboard, tarayıcınızın yerel oturumunu kullanarak doğrudan <strong>https://mcp.turkishtechlab.com/mcp</strong> sunucusuna canlı JSON-RPC istekleri gönderir.
+        <!-- Bilgilendirme ve Giriş Paneli -->
+        <div class="alert alert-warning border-0 shadow-sm mb-4 d-none" id="login-alert" role="alert">
+            <div class="d-flex justify-content-between align-items-center flex-wrap">
+                <div>
+                    <i class="fa-solid fa-lock me-2 text-warning"></i> 
+                    Canlı verileri çekebilmek için öncelikle <strong>Miles&Smiles</strong> hesabınızla yetki vermeniz gerekmektedir.
+                </div>
+                <button class="btn btn-thy btn-sm mt-2 mt-md-0" onclick="redirectToLogin()">
+                    <i class="fa-solid fa-user-lock me-1"></i> Miles&Smiles ile Giriş Yap
+                </button>
+            </div>
         </div>
         
         <!-- Özet Kartları -->
@@ -159,7 +169,7 @@
                             <tbody id="flight-table-body">
                                 <tr>
                                     <td colspan="4" class="text-center py-4 text-muted">
-                                        <i class="fa-solid fa-spinner fa-spin me-2"></i> THY MCP Sunucusuna bağlanılıyor...
+                                        <i class="fa-solid fa-spinner fa-spin me-2"></i> Veriler bekleniyor...
                                     </td>
                                 </tr>
                             </tbody>
@@ -195,14 +205,56 @@
             }
         });
 
-        // Doğrudan kullanıcının tarayıcısından THY MCP'yi sorgulayan fonksiyon
+        // THY MCP OAuth Bilgileri
+        const AUTH_SERVER = "https://mcp.turkishtechlab.com/oauth/authorize";
+        const CLIENT_ID = "omm-dashboard"; // THY MCP için tanımlanmış varsayılan client_id
+        const REDIRECT_URI = window.location.href.split('?')[0]; // Giriş sonrası döneceği adres (şu anki sayfa)
+
+        // URL'den Token Kontrolü Yapma
+        function checkUrlForToken() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('access_token') || urlParams.get('token');
+            
+            if (token) {
+                localStorage.setItem('thy_mcp_token', token);
+                // Temiz bir URL için token parametresini adresten gizle
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        }
+
+        // Giriş Sayfasına Yönlendir
+        function redirectToLogin() {
+            // Tarayıcıyı THY'nin resmi giriş ekranına yönlendiriyoruz
+            const authUrl = `${AUTH_SERVER}?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=token&scope=flight.read`;
+            window.location.href = authUrl;
+        }
+
+        // Çıkış Yapma
+        function logout() {
+            localStorage.removeItem('thy_mcp_token');
+            location.reload();
+        }
+
+        // Doğrudan Canlı API'yi Sorgulayan Fonksiyon
         async function fetchLiveTHYData() {
             const btn = document.getElementById('btn-refresh');
             const icon = btn.querySelector('i');
             icon.classList.add('fa-spin');
 
+            const token = localStorage.getItem('thy_mcp_token');
+
+            if (!token) {
+                document.getElementById('login-alert').classList.remove('d-none');
+                showErrorState("Lütfen Miles&Smiles hesabınızla giriş yapın.");
+                icon.classList.remove('fa-spin');
+                return;
+            }
+
+            // Eğer token varsa giriş uyarısını gizle, çıkış butonunu göster
+            document.getElementById('login-alert').classList.add('d-none');
+            document.getElementById('btn-logout').classList.remove('d-none');
+
             try {
-                // MCP standardında JSON-RPC isteği
                 const payload = {
                     jsonrpc: "2.0",
                     id: 1,
@@ -217,10 +269,17 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Accept': 'application/json'
+                        'Accept': 'application/json',
+                        'Authorization': `Bearer ${token}` // Canlı Token'ı burada sunuyoruz!
                     },
                     body: JSON.stringify(payload)
                 });
+
+                if (response.status === 401) {
+                    // Token geçersizleşmişse hafızayı sil ve girişe zorla
+                    localStorage.removeItem('thy_mcp_token');
+                    throw new Error("Oturum süreniz dolmuş. Lütfen tekrar giriş yapın.");
+                }
 
                 if (!response.ok) {
                     throw new Error(`THY MCP Sunucusu hata kodu döndü: ${response.status}`);
@@ -229,13 +288,13 @@
                 const rawData = await response.json();
                 
                 if (rawData.error) {
-                    throw new Error(rawData.error.message || "Kimlik doğrulama veya yetki hatası.");
+                    throw new Error(rawData.error.message || "Bir MCP hatası oluştu.");
                 }
 
                 const mcpContent = rawData.result.content[0].text;
                 const liveData = JSON.parse(mcpContent);
 
-                // Verileri ekrana doldur
+                // Ekranı Güncelle
                 document.getElementById('metric-total').innerText = liveData.flights ? liveData.flights.length : 0;
                 document.getElementById('metric-delay').innerText = `%${liveData.delay_rate || 0}`;
                 document.getElementById('metric-occupancy').innerText = `%${liveData.average_occupancy || 0}`;
@@ -244,7 +303,7 @@
                 tbody.innerHTML = '';
 
                 if (!liveData.flights || liveData.flights.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4">Aktif uçuş bulunamadı.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4">Şu an aktif uçuş bulunmamaktadır.</td></tr>';
                 } else {
                     liveData.flights.forEach(flight => {
                         let badgeClass = 'badge-ontime';
@@ -261,7 +320,7 @@
                     });
                 }
 
-                // Grafiği güncelle
+                // Grafiği Güncelle
                 myChart.data.labels = liveData.top_destinations || [];
                 myChart.data.datasets[0].data = liveData.destination_counts || [];
                 myChart.update();
@@ -269,6 +328,9 @@
             } catch (error) {
                 console.error("Hata:", error);
                 showErrorState(error.message);
+                if (error.message.includes("Tekrar giriş yapın")) {
+                    document.getElementById('login-alert').classList.remove('d-none');
+                }
             } finally {
                 icon.classList.remove('fa-spin');
             }
@@ -282,18 +344,15 @@
             const tbody = document.getElementById('flight-table-body');
             tbody.innerHTML = `<tr>
                 <td colspan="4" class="text-center text-danger py-4">
-                    <i class="fa-solid fa-triangle-exclamation fa-2x mb-2"></i><br>
-                    <strong>Bağlantı Kurulamadı!</strong><br>
-                    <small style="font-size: 0.85rem;">${message}</small><br>
-                    <p class="mt-2 mb-0 text-muted" style="font-size: 0.75rem;">
-                        Not: THY MCP sunucusu CORS kuralları uyguluyor olabilir. Eğer bu hatayı görüyorsanız tarayıcınıza geçici olarak 
-                        <a href="https://chromewebstore.google.com/detail/cors-unblock/lfhmphbgggandbcehoglhbpeggffeedg" target="_blank">CORS Unblock</a> 
-                        eklentisini kurup aktif etmeniz gerekmektedir.
-                    </p>
+                    <i class="fa-solid fa-lock fa-2x mb-2 text-warning"></i><br>
+                    <strong>Bağlantı Yetkilendirilemedi (401)!</strong><br>
+                    <small style="font-size: 0.85rem;">${message}</small>
                 </td>
             </tr>`;
         }
 
+        // Başlangıç süreçleri
+        checkUrlForToken();
         window.addEventListener('DOMContentLoaded', fetchLiveTHYData);
         document.getElementById('btn-refresh').addEventListener('click', fetchLiveTHYData);
     </script>
