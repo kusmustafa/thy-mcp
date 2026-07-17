@@ -1,4 +1,171 @@
-<!-- Script -->
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OMM - Turkish Airlines MCP Dashboard</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --thy-red: #E30A17;
+            --thy-dark: #1A1A1A;
+            --thy-gray: #F8F9FA;
+            --thy-border: #E5E5E5;
+        }
+        body {
+            background-color: var(--thy-gray);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .navbar-thy {
+            background-color: var(--thy-dark);
+            border-bottom: 4px solid var(--thy-red);
+        }
+        .card-metric {
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            transition: transform 0.2s;
+            background: white;
+        }
+        .card-metric:hover {
+            transform: translateY(-3px);
+        }
+        .border-thy-red {
+            border-left: 5px solid var(--thy-red);
+        }
+        .btn-thy {
+            background-color: var(--thy-red);
+            color: white;
+            border: none;
+            font-weight: 600;
+        }
+        .btn-thy:hover {
+            background-color: #be0813;
+            color: white;
+        }
+        .status-badge {
+            font-size: 0.85rem;
+            padding: 6px 12px;
+            border-radius: 30px;
+            font-weight: 600;
+        }
+        .badge-ontime {
+            background-color: #d1e7dd;
+            color: #0f5132;
+        }
+        .badge-delayed {
+            background-color: #f8d7da;
+            color: #842029;
+        }
+        .badge-boarding {
+            background-color: #fff3cd;
+            color: #664d03;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Üst Menü -->
+    <nav class="navbar navbar-dark navbar-thy py-3">
+        <div class="container">
+            <span class="navbar-brand mb-0 h1">
+                <i class="fa-solid fa-plane-departure me-2" style="color: var(--thy-red);"></i> 
+                Turkish Airlines MCP Dashboard
+            </span>
+            <span class="badge bg-light text-dark py-2 px-3">OMM Analiz Sistemi v1.0</span>
+        </div>
+    </nav>
+
+    <div class="container my-5">
+        
+        <!-- Özet Kartları -->
+        <div class="row g-4 mb-5">
+            <div class="col-md-4">
+                <div class="card card-metric p-4 border-thy-red">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-1">Toplam Aktif Uçuş</h6>
+                            <h2 class="fw-bold mb-0" id="metric-total">---</h2>
+                        </div>
+                        <i class="fa-solid fa-plane fa-2x text-secondary"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card card-metric p-4 border-thy-red">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-1">Rötarlı Uçuş Oranı</h6>
+                            <h2 class="fw-bold text-danger mb-0" id="metric-delay">---</h2>
+                        </div>
+                        <i class="fa-solid fa-clock-history fa-2x text-danger"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card card-metric p-4 border-thy-red">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-1">Ortalama Doluluk Oranı</h6>
+                            <h2 class="fw-bold text-success mb-0" id="metric-occupancy">---</h2>
+                        </div>
+                        <i class="fa-solid fa-users fa-2x text-success"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <!-- Grafik Sol Taraf -->
+            <div class="col-lg-5">
+                <div class="card card-metric p-4 h-100">
+                    <h5 class="fw-bold mb-4"><i class="fa-solid fa-chart-simple me-2 text-danger"></i>Uçuş Yoğunluğu (Destinasyon)</h5>
+                    <div style="position: relative; height: 300px;">
+                        <canvas id="destinationChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tablo Sağ Taraf -->
+            <div class="col-lg-7">
+                <div class="card card-metric p-4 h-100">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h5 class="fw-bold mb-0"><i class="fa-solid fa-list me-2 text-danger"></i>MCP Aktif Uçuş Çizelgesi</h5>
+                        <button class="btn btn-thy btn-sm" id="btn-refresh">
+                            <i class="fa-solid fa-arrows-rotate me-1"></i> Verileri Güncelle
+                        </button>
+                    </div>
+                    
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Uçuş Kodu</th>
+                                    <th>Rota</th>
+                                    <th>Tahmini Kalkış</th>
+                                    <th>Durum</th>
+                                </tr>
+                            </thead>
+                            <tbody id="flight-table-body">
+                                <tr>
+                                    <td colspan="4" class="text-center py-4 text-muted">
+                                        <i class="fa-solid fa-spinner fa-spin me-2"></i> Veriler bekleniyor...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script -->
     <script>
         const ctx = document.getElementById('destinationChart').getContext('2d');
         const myChart = new Chart(ctx, {
@@ -29,8 +196,9 @@
             icon.classList.add('fa-spin');
 
             try {
+                // Her zaman aynı klasördeki data.json dosyasını çekmeye çalışır
                 const response = await fetch('data.json');
-                if (!response.ok) throw new Error('Veri dosyası (data.json) bulunamadı!');
+                if (!response.ok) throw new Error('data.json dosyası henüz oluşturulmadı!');
                 
                 const data = await response.json();
 
@@ -40,7 +208,7 @@
                     return;
                 }
 
-                // Canlı Verileri Ekrana Bas
+                // Sadece gelen veri başarılı durumdaysa verileri ekrana bas
                 document.getElementById('metric-total').innerText = data.totalFlights;
                 document.getElementById('metric-delay').innerText = `%${data.delayRate}`;
                 document.getElementById('metric-occupancy').innerText = `%${data.averageOccupancy}`;
@@ -48,7 +216,7 @@
                 const tbody = document.getElementById('flight-table-body');
                 tbody.innerHTML = '';
                 
-                if (data.flights.length === 0) {
+                if (!data.flights || data.flights.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Aktif canlı uçuş bulunmamaktadır.</td></tr>';
                 } else {
                     data.flights.forEach(flight => {
@@ -66,8 +234,8 @@
                     });
                 }
 
-                myChart.data.labels = data.chartLabels;
-                myChart.data.datasets[0].data = data.chartData;
+                myChart.data.labels = data.chartLabels || [];
+                myChart.data.datasets[0].data = data.chartData || [];
                 myChart.update();
 
             } catch (error) {
@@ -79,7 +247,7 @@
         }
 
         function showErrorState(message) {
-            // Ekrana büyük kırmızı bir canlı veri bağlantı hatası basıyoruz
+            // Canlı veri bağlantısı kesildiğinde/gelmediğinde tüm panelleri boşaltır ve hata gösterir
             document.getElementById('metric-total').innerText = "---";
             document.getElementById('metric-delay').innerText = "---";
             document.getElementById('metric-occupancy').innerText = "---";
@@ -89,7 +257,7 @@
                 <td colspan="4" class="text-center text-danger py-4">
                     <i class="fa-solid fa-triangle-exclamation fa-2x mb-2"></i><br>
                     <strong>Canlı Veri Bağlantı Hatası!</strong><br>
-                    <small>${message}</small>
+                    <small style="font-size: 0.8rem; word-break: break-word;">${message}</small>
                 </td>
             </tr>`;
             
@@ -98,6 +266,9 @@
             myChart.update();
         }
 
+        // Sayfa ilk yüklendiğinde ve güncelleme butonuna basıldığında tetiklenir
         window.addEventListener('DOMContentLoaded', loadDashboardData);
         document.getElementById('btn-refresh').addEventListener('click', loadDashboardData);
     </script>
+</body>
+</html>
