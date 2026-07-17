@@ -78,12 +78,19 @@
                 Turkish Airlines MCP Dashboard
             </span>
             <span class="badge bg-success text-white py-2 px-3" id="connection-status">
-                <i class="fa-solid fa-circle-notch fa-spin me-1"></i> THY MCP Canlı Bağlantısı Kuruluyor...
+                <i class="fa-solid fa-circle-notch fa-spin me-1"></i> Kurumsal Canlı Tünel Bağlantısı Açılıyor...
             </span>
         </div>
     </nav>
 
     <div class="container my-5">
+        <!-- Aktivasyon Notu -->
+        <div class="alert alert-info border-0 shadow-sm mb-4" id="cors-alert">
+            <i class="fa-solid fa-circle-info me-2 text-primary"></i> 
+            Şirket bilgisayarında CORS engelini aşmak için canlı tünel aktif ediliyor. Eğer ilk yüklemede veri gelmezse lütfen 
+            <a href="https://cors-anywhere.herokuapp.com/corsdemo" target="_blank" class="fw-bold text-decoration-underline">Buraya Tıklayıp Açılan Sayfadaki Butona Basın</a> 
+            ve ardından dashboard'u yenileyin.
+        </div>
         
         <!-- Özet Kartları -->
         <div class="row g-4 mb-5">
@@ -156,7 +163,7 @@
                             <tbody id="flight-table-body">
                                 <tr>
                                     <td colspan="4" class="text-center py-4 text-muted">
-                                        <i class="fa-solid fa-spinner fa-spin me-2"></i> THY MCP Sunucusundan canlı veriler çekiliyor...
+                                        <i class="fa-solid fa-spinner fa-spin me-2"></i> THY MCP Canlı verileri tünelden çekiliyor...
                                     </td>
                                 </tr>
                             </tbody>
@@ -186,63 +193,59 @@
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                scales: {
-                    y: { beginAtZero: true }
-                }
+                scales: { y: { beginAtZero: true } }
             }
         });
 
         // ==========================================
-        // BURAYA KENDİ MİLES&SMILES BİLGİLERİNİZİ YAZIN
+        // LÜTFEN BURAYA KENDİ MİLES&SMILES BİLGİLERİNİZİ YAZIN
         const MS_USER = "TK478098876"; 
         const MS_PASS = "171005";
         // ==========================================
 
-        // Arka planda THY'den otomatik token alan ve veriyi getiren ana fonksiyon
+        // Şirket ağından CORS'u aşmak için kullanılan şeffaf proxy tüneli
+        const PROXY_URL = "https://cors-anywhere.herokuapp.com/";
+
         async function loadLiveDashboard() {
             const btn = document.getElementById('btn-refresh');
             const icon = btn.querySelector('i');
             if(icon) icon.classList.add('fa-spin');
 
             try {
-                // 1. Adım: Tarayıcı üzerinden doğrudan THY OAuth sunucusuna gidip Token istiyoruz
-                const tokenUrl = "https://mcp.turkishtechlab.com/oauth/token";
+                // 1. Adım: Tünel üzerinden doğrudan THY OAuth sunucusuna gidip Token istiyoruz
+                const tokenUrl = PROXY_URL + "https://mcp.turkishtechlab.com/oauth/token";
                 
-                // Form verisi (x-www-form-urlencoded) hazırlığı
                 const details = {
                     'grant_type': 'password',
                     'username': MS_USER,
                     'password': MS_PASS,
-                    'scope': 'openid flight.read miles.read'
+                    'scope': 'openid flight.read'
                 };
 
                 let formBody = [];
                 for (let property in details) {
-                    let encodedKey = encodeURIComponent(property);
-                    let encodedValue = encodeURIComponent(details[property]);
-                    formBody.push(encodedKey + "=" + encodedValue);
+                    formBody.push(encodeURIComponent(property) + "=" + encodeURIComponent(details[property]));
                 }
                 formBody = formBody.join("&");
 
-                console.log("THY MCP Sunucusundan otomatik anlık token isteniyor...");
                 const tokenResponse = await fetch(tokenUrl, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+                        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+                        'X-Requested-With': 'XMLHttpRequest'
                     },
                     body: formBody
                 });
 
                 if (!tokenResponse.ok) {
-                    throw new Error(`Giriş Başarısız! Şifrenizi veya üye numaranızı kontrol edin. (Durum: ${tokenResponse.status})`);
+                    throw new Error(`Giriş Başarısız! Kullanıcı bilgilerini veya tünel iznini kontrol edin.`);
                 }
 
                 const tokenData = await tokenResponse.json();
                 const accessToken = tokenData.access_token;
-                console.log("Token başarıyla alındı! Canlı uçuş verileri yükleniyor...");
 
-                // 2. Adım: Alınan bu taze canlı token ile doğrudan MCP aracını sorguluyoruz
-                const mcpUrl = "https://mcp.turkishtechlab.com/mcp";
+                // 2. Adım: Tünel üzerinden MCP aracını sorguluyoruz
+                const mcpUrl = PROXY_URL + "https://mcp.turkishtechlab.com/mcp";
                 const payload = {
                     jsonrpc: "2.0",
                     id: 1,
@@ -258,24 +261,26 @@
                     headers: {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json',
-                        'Authorization': `Bearer ${accessToken}` // Dinamik otomatik token enjeksiyonu
+                        'Authorization': `Bearer ${accessToken}`,
+                        'X-Requested-With': 'XMLHttpRequest'
                     },
                     body: JSON.stringify(payload)
                 });
 
                 if (!mcpResponse.ok) {
-                    throw new Error(`MCP Uçuş aracı yanıt vermedi. Durum: ${mcpResponse.status}`);
+                    throw new Error(`THY MCP aracı yanıt vermedi.`);
                 }
 
                 const rawData = await mcpResponse.json();
                 const mcpContent = rawData.result.content[0].text;
                 const liveData = JSON.parse(mcpContent);
 
-                // Üst başlığı "Aktif" durumuna getir
+                // Durum çubuğunu güncelle
                 document.getElementById('connection-status').className = "badge bg-success text-white py-2 px-3";
-                document.getElementById('connection-status').innerHTML = '<i class="fa-solid fa-circle-check me-1"></i> Canlı Bağlantı Aktif';
+                document.getElementById('connection-status').innerHTML = '<i class="fa-solid fa-circle-check me-1"></i> Tünel Bağlantısı Aktif';
+                document.getElementById('cors-alert').classList.add('d-none');
 
-                // Verileri ekrana yazdır
+                // Verileri kartlara doldur
                 document.getElementById('metric-total').innerText = liveData.flights ? liveData.flights.length : 0;
                 document.getElementById('metric-delay').innerText = `%${liveData.delay_rate || 0}`;
                 document.getElementById('metric-occupancy').innerText = `%${liveData.average_occupancy || 0}`;
@@ -284,7 +289,7 @@
                 tbody.innerHTML = '';
 
                 if (!liveData.flights || liveData.flights.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4">Şu an aktif uçuş bulunmamaktadır.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4">Şu an aktif canlı uçuş bulunmamaktadır.</td></tr>';
                 } else {
                     liveData.flights.forEach(flight => {
                         let badgeClass = 'badge-ontime';
@@ -316,7 +321,7 @@
 
         function showErrorState(message) {
             document.getElementById('connection-status').className = "badge bg-danger text-white py-2 px-3";
-            document.getElementById('connection-status').innerHTML = '<i class="fa-solid fa-circle-xmark me-1"></i> Bağlantı Kesildi';
+            document.getElementById('connection-status').innerHTML = '<i class="fa-solid fa-circle-xmark me-1"></i> Tünel Pasif';
             
             document.getElementById('metric-total').innerText = "---";
             document.getElementById('metric-delay').innerText = "---";
@@ -326,13 +331,12 @@
             tbody.innerHTML = `<tr>
                 <td colspan="4" class="text-center text-danger py-4">
                     <i class="fa-solid fa-triangle-exclamation fa-2x mb-2 text-warning"></i><br>
-                    <strong>Canlı THY MCP Bağlantı Hatası!</strong><br>
+                    <strong>Canlı Bağlantı Kurulamadı!</strong><br>
                     <small style="font-size: 0.85rem;">${message}</small>
                 </td>
             </tr>`;
         }
 
-        // Sayfa açıldığında otomatik tetikle
         window.addEventListener('DOMContentLoaded', loadLiveDashboard);
         document.getElementById('btn-refresh').addEventListener('click', loadLiveDashboard);
     </script>
