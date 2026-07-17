@@ -1,0 +1,56 @@
+{
+    "totalFlights": 38,
+    "delayRate": 5.2,
+    "averageOccupancy": 88,
+    "chartLabels": [
+        "Londra",
+        "Atina",
+        "New York",
+        "Paris",
+        "Münih"
+    ],
+    "chartData": [
+        15,
+        22,
+        10,
+        18,
+        12
+    ],
+    "flights": [
+        {
+            "flightNumber": "TK1903",
+            "origin": "IST",
+            "destination": "LHR (Londra)",
+            "estimatedTime": "14:20",
+            "status": "Zamanında"
+        },
+        {
+            "flightNumber": "TK1881",
+            "origin": "IST",
+            "destination": "ATH (Atina)",
+            "estimatedTime": "14:45",
+            "status": "Zamanında"
+        },
+        {
+            "flightNumber": "TK2026",
+            "origin": "IST",
+            "destination": "JFK (New York)",
+            "estimatedTime": "15:10",
+            "status": "Rötarlı (+25dk)"
+        },
+        {
+            "flightNumber": "TK1920",
+            "origin": "IST",
+            "destination": "CDG (Paris)",
+            "estimatedTime": "15:40",
+            "status": "Biniş Başladı"
+        },
+        {
+            "flightNumber": "TK1552",
+            "origin": "IST",
+            "destination": "MUC (Münih)",
+            "estimatedTime": "16:05",
+            "status": "Zamanında"
+        }
+    ]
+}
