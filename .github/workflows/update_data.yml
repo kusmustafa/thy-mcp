@@ -27,6 +27,9 @@ jobs:
         pip install requests
 
     - name: MCP Verisini Çek
+      env:
+        MILES_SMILES_USER: ${{ secrets.MILES_SMILES_USER }}
+        MILES_SMILES_PASS: ${{ secrets.MILES_SMILES_PASS }}
       run: python fetch_data.py
 
     - name: Değişiklikleri GitHub'a Geri Yükle
