@@ -77,11 +77,16 @@
                 <i class="fa-solid fa-plane-departure me-2" style="color: var(--thy-red);"></i> 
                 Turkish Airlines MCP Dashboard
             </span>
-            <span class="badge bg-light text-dark py-2 px-3">OMM Analiz Sistemi v1.0</span>
+            <span class="badge bg-light text-dark py-2 px-3">OMM Canlı Analiz</span>
         </div>
     </nav>
 
     <div class="container my-5">
+        <!-- Bilgilendirme Kutusu -->
+        <div class="alert alert-info border-0 shadow-sm mb-4" role="alert">
+            <i class="fa-solid fa-circle-info me-2 text-primary"></i> 
+            Bu dashboard, tarayıcınızın yerel oturumunu kullanarak doğrudan <strong>https://mcp.turkishtechlab.com/mcp</strong> sunucusuna canlı JSON-RPC istekleri gönderir.
+        </div>
         
         <!-- Özet Kartları -->
         <div class="row g-4 mb-5">
@@ -154,7 +159,7 @@
                             <tbody id="flight-table-body">
                                 <tr>
                                     <td colspan="4" class="text-center py-4 text-muted">
-                                        <i class="fa-solid fa-spinner fa-spin me-2"></i> Veriler bekleniyor...
+                                        <i class="fa-solid fa-spinner fa-spin me-2"></i> THY MCP Sunucusuna bağlanılıyor...
                                     </td>
                                 </tr>
                             </tbody>
@@ -190,56 +195,79 @@
             }
         });
 
-        async function loadDashboardData() {
+        // Doğrudan kullanıcının tarayıcısından THY MCP'yi sorgulayan fonksiyon
+        async function fetchLiveTHYData() {
             const btn = document.getElementById('btn-refresh');
             const icon = btn.querySelector('i');
             icon.classList.add('fa-spin');
 
             try {
-                // Her zaman aynı klasördeki data.json dosyasını çekmeye çalışır
-                const response = await fetch('data.json');
-                if (!response.ok) throw new Error('data.json dosyası henüz oluşturulmadı!');
-                
-                const data = await response.json();
+                // MCP standardında JSON-RPC isteği
+                const payload = {
+                    jsonrpc: "2.0",
+                    id: 1,
+                    method: "tools/call",
+                    params: {
+                        name: "get_active_flights",
+                        arguments: {}
+                    }
+                };
 
-                // Eğer Python script'i hata alıp hata durumunu yazdıysa:
-                if (data.status === "error") {
-                    showErrorState(data.error_message);
-                    return;
+                const response = await fetch('https://mcp.turkishtechlab.com/mcp', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`THY MCP Sunucusu hata kodu döndü: ${response.status}`);
                 }
 
-                // Sadece gelen veri başarılı durumdaysa verileri ekrana bas
-                document.getElementById('metric-total').innerText = data.totalFlights;
-                document.getElementById('metric-delay').innerText = `%${data.delayRate}`;
-                document.getElementById('metric-occupancy').innerText = `%${data.averageOccupancy}`;
+                const rawData = await response.json();
+                
+                if (rawData.error) {
+                    throw new Error(rawData.error.message || "Kimlik doğrulama veya yetki hatası.");
+                }
+
+                const mcpContent = rawData.result.content[0].text;
+                const liveData = JSON.parse(mcpContent);
+
+                // Verileri ekrana doldur
+                document.getElementById('metric-total').innerText = liveData.flights ? liveData.flights.length : 0;
+                document.getElementById('metric-delay').innerText = `%${liveData.delay_rate || 0}`;
+                document.getElementById('metric-occupancy').innerText = `%${liveData.average_occupancy || 0}`;
 
                 const tbody = document.getElementById('flight-table-body');
                 tbody.innerHTML = '';
-                
-                if (!data.flights || data.flights.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Aktif canlı uçuş bulunmamaktadır.</td></tr>';
+
+                if (!liveData.flights || liveData.flights.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4">Aktif uçuş bulunamadı.</td></tr>';
                 } else {
-                    data.flights.forEach(flight => {
+                    liveData.flights.forEach(flight => {
                         let badgeClass = 'badge-ontime';
-                        if (flight.status.includes('Rötarlı')) badgeClass = 'badge-delayed';
-                        if (flight.status.includes('Biniş')) badgeClass = 'badge-boarding';
+                        if (flight.status_text && flight.status_text.includes('Rötarlı')) badgeClass = 'badge-delayed';
+                        if (flight.status_text && flight.status_text.includes('Biniş')) badgeClass = 'badge-boarding';
 
                         const row = `<tr>
-                            <td><strong>${flight.flightNumber}</strong></td>
-                            <td>${flight.origin} - ${flight.destination}</td>
-                            <td>${flight.estimatedTime}</td>
-                            <td><span class="status-badge ${badgeClass}">${flight.status}</span></td>
+                            <td><strong>${flight.flight_number || 'N/A'}</strong></td>
+                            <td>${flight.origin || 'N/A'} - ${flight.destination || 'N/A'}</td>
+                            <td>${flight.estimated_departure || '--:--'}</td>
+                            <td><span class="status-badge ${badgeClass}">${flight.status_text || 'Zamanında'}</span></td>
                         </tr>`;
                         tbody.innerHTML += row;
                     });
                 }
 
-                myChart.data.labels = data.chartLabels || [];
-                myChart.data.datasets[0].data = data.chartData || [];
+                // Grafiği güncelle
+                myChart.data.labels = liveData.top_destinations || [];
+                myChart.data.datasets[0].data = liveData.destination_counts || [];
                 myChart.update();
 
             } catch (error) {
-                console.error("Veri yükleme hatası:", error);
+                console.error("Hata:", error);
                 showErrorState(error.message);
             } finally {
                 icon.classList.remove('fa-spin');
@@ -247,7 +275,6 @@
         }
 
         function showErrorState(message) {
-            // Canlı veri bağlantısı kesildiğinde/gelmediğinde tüm panelleri boşaltır ve hata gösterir
             document.getElementById('metric-total').innerText = "---";
             document.getElementById('metric-delay').innerText = "---";
             document.getElementById('metric-occupancy').innerText = "---";
@@ -256,19 +283,19 @@
             tbody.innerHTML = `<tr>
                 <td colspan="4" class="text-center text-danger py-4">
                     <i class="fa-solid fa-triangle-exclamation fa-2x mb-2"></i><br>
-                    <strong>Canlı Veri Bağlantı Hatası!</strong><br>
-                    <small style="font-size: 0.8rem; word-break: break-word;">${message}</small>
+                    <strong>Bağlantı Kurulamadı!</strong><br>
+                    <small style="font-size: 0.85rem;">${message}</small><br>
+                    <p class="mt-2 mb-0 text-muted" style="font-size: 0.75rem;">
+                        Not: THY MCP sunucusu CORS kuralları uyguluyor olabilir. Eğer bu hatayı görüyorsanız tarayıcınıza geçici olarak 
+                        <a href="https://chromewebstore.google.com/detail/cors-unblock/lfhmphbgggandbcehoglhbpeggffeedg" target="_blank">CORS Unblock</a> 
+                        eklentisini kurup aktif etmeniz gerekmektedir.
+                    </p>
                 </td>
             </tr>`;
-            
-            myChart.data.labels = [];
-            myChart.data.datasets[0].data = [];
-            myChart.update();
         }
 
-        // Sayfa ilk yüklendiğinde ve güncelleme butonuna basıldığında tetiklenir
-        window.addEventListener('DOMContentLoaded', loadDashboardData);
-        document.getElementById('btn-refresh').addEventListener('click', loadDashboardData);
+        window.addEventListener('DOMContentLoaded', fetchLiveTHYData);
+        document.getElementById('btn-refresh').addEventListener('click', fetchLiveTHYData);
     </script>
 </body>
 </html>
